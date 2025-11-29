@@ -1,0 +1,1 @@
+This text is used to test TAMMI functionality. It has twenty words. Morphologically complex words are included. It is software.
