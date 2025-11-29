@@ -5,6 +5,34 @@ The user-friendly version of the tool is available at linguisticanalysistools.or
 
 TAMMI 2.0 was specifically designed to annotate and count morphological features in texts. In developing TAMMI 2.0, we provide automatic calculations for the MorphoLex dataframe provided by Sánchez-Gutiérrez et al. (2017). We also included an automatic calculation of morphological complexity index (MCI) based on inflections as detailed by Brezina and Pallotti (2019). In addition, we calculated an MCI for derivational morphemes and developed new morphological complexity indices based on morphological variety and type-token ratios for both inflectional and derivational morphemes. Lastly, we calculate a number of basic morpheme counts. The indices reported by TAMMI 2.0 are discussed below.
 
+## Command-line runner
+
+The notebook has been rewritten as `tammi_cli.py` so you can process large batches of text files without Jupyter.
+
+### Setup
+1. Install spaCy and the English model:
+   ```bash
+   python3 -m pip install spacy
+   python3 -m spacy download en_core_web_sm
+   ```
+2. Ensure `morpho_lex_df_w_log_w_prefsuf_no_head.csv` is alongside the script (or point to it with `--morpholex`).
+
+### Usage
+```bash
+python3 tammi_cli.py /path/to/texts another_dir/*.txt \
+  --recursive \
+  --n-process 4 \
+  --batch-size 500 \
+  --ext .txt \
+  --output morphemes.csv
+```
+- `inputs`: files or directories (with `--recursive` for subfolders).
+- `--ext`: comma-separated extensions to include (default `.txt`).
+- `--model`: spaCy model name (default `en_core_web_sm`).
+- `--keep-case`: skip lowercasing (default behavior matches the notebook by lowercasing).
+
+The script streams texts through spaCy (`nlp.pipe`) and writes `morphemes.csv` incrementally with the same columns as the notebook output (`text_id` + TAMMI variables).
+
 Basic morpheme counts. TAMMI 2.0 includes basic morpheme counts for the number of tokens with inflections and derivational morphemes. The inflections are counted using spaCy (Honnibal & Montani, 2017) by assessing the differences between each token and its lemma. TAMMI also computes the number of words that has prefixes and affixes as well as the number of compound words. In addition, TAMMI 2.0 calculates the total number of prefixes, roots, suffixes, and affixes per text as well as a combination of the number of roots and affixes and a combination of the number of roots, affixes, and inflections. TAMMI 2.0 also computes normed indices by taking the count for each variable and dividing it by 1) the number of content words (i.e., verbs, nouns, adjectives, adverbs) in the text, and by 2) the number of content words with the relevant morpheme. For example, when calculating indices for the number of prefixes, TAMMI 2.0 will count the number of prefixes in a text and provide two normed scores. The first count will be the number of prefixes in the text divided by the number of content words in the text. The second count will be the number of prefixes divided by the number of words with prefixes. It is expected that indices normed by morpheme type may not perform well on texts with simple morpheme use because each word may only contain a single morpheme type (i.e., a text may contain only a single prefix in all words that contain a prefix, giving a normed score by prefix of 1). Thus, users should only use the prefix normed counts when examining longer texts that are representative of more advanced language use.
 
 Morphological variety. The inflection morphological variety feature in TAMMI 2.0 is based on a within-subset variety score in which content words from each text are broken into windows of 10 words (plus a window of 1-to-9 for any remaining content words at the end of the text). Inflectional morpheme types (e.g., -s and -ed) for each content word in the window, and null tokens for words without inflections in the window, are counted for each 10-word window and then divided by the total number of windows. A similar approach is used to assess derivational morpheme variety. However, since a content word could have multiple derivational morphemes, the windows of 10 words and/or null counts could have multiple derivational morphemes per word. Thus, a window of ten derivational morphemes and/or null counts may reflect 10 content words or fewer. 
@@ -21,4 +49,3 @@ Morpheme family size counts. For roots, prefixes, suffixes, and all affixes, TAM
 Morpheme family size frequency. TAMMI 2.0 also reports the percentage of other words in the family that are more frequent (PFMF) from MorphoLex. This feature counts the percentage of morphemes per word that are more frequent by dividing the number of more frequent words in a family by the total number of family members. For instance, word, wordiness, and wordlessly all have the same root (i.e., word), but the word word is the most frequent type in the family (PFMF = 0%) whereas wordlessly has 10 terms that are more frequent (PFMF = 45%) and wordiness has 15 types that are more frequent (PFMF = 70%; example taken from Sánchez-Gutiérrez et al., 2017). Thus, a lower value indicates a word that is more frequent in the family, and higher PFMF values can contribute to greater morphological complexity.
 
 Hapax counts. Hapaxes are defined in MorphoLex as words that only appear once in a corpus. Affixes that attach to a greater number of hapaxes are more productive and can be used to create new words. TAMMI 2.0 derives two types of hapax counts from MorphoLex: the number of prefixes/suffixes/affixes that are attached to hapaxes and the number of hapaxes that include prefixes/suffixes/affixes.
-
