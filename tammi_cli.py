@@ -13,6 +13,7 @@ import argparse
 import csv
 from collections import Counter
 from pathlib import Path
+from itertools import chain
 from typing import Dict, Iterable, Iterator, List, Sequence, Tuple
 
 import spacy
@@ -298,7 +299,7 @@ def analyze_doc(doc, morph_dict: Dict[str, List]) -> List[float]:
     inflec_10_ttr = safe_divide(sum(ttr_10_inflec), len(ttr_10_inflec))
     msv_10_inflec = safe_divide(sum(inflec_10_subset), len(inflec_10_subset))
 
-    sing_list_inflec: List[str] = sum(mw10, [])
+    sing_list_inflec: List[str] = list(chain.from_iterable(mw10))
     inflec_counts = Counter(sing_list_inflec)
     between_subset_div_inflec = sum(1 for v in inflec_counts.values() if v == 1)
     mci_inflec = calc_mci(msv_10_inflec, between_subset_div_inflec, len(inflec_10_subset))
@@ -329,7 +330,7 @@ def analyze_doc(doc, morph_dict: Dict[str, List]) -> List[float]:
     deriv_10_ttr = safe_divide(sum(ttr_10_deriv), len(ttr_10_deriv))
     msv_10_deriv = safe_divide(sum(deriv_10_types), len(deriv_10_types))
 
-    sing_list_der = sum(cw10_affixes, [])
+    sing_list_der = list(chain.from_iterable(cw10_affixes))
     deriv_counts = Counter(sing_list_der)
     between_subset_div_der = sum(1 for v in deriv_counts.values() if v == 1)
     mci_deriv = calc_mci(msv_10_deriv, between_subset_div_der, len(deriv_10_types))
