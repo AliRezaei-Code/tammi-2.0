@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import argparse
 import csv
+import sys
 from collections import Counter
 from pathlib import Path
 from itertools import chain
-from typing import Dict, Iterable, Iterator, List, Sequence, Tuple
+from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
 
 import spacy
 
@@ -66,6 +67,30 @@ COLUMN_NAMES: List[str] = [
 
 # Indices in the MorphoLex CSV that list derivational affixes for a word.
 DERIVATIONAL_AFFIX_INDICES: Tuple[int, ...] = (68, 69, 70, 71, 72, 73, 74)
+
+
+class ProgressBar:
+    """Lightweight ASCII progress bar for CLI runs."""
+
+    def __init__(self, total: int, width: int = 30) -> None:
+        self.total = total
+        self.width = width
+        self.enabled = sys.stdout.isatty() and total > 0
+
+    def update(self, current: int) -> None:
+        if not self.enabled:
+            return
+        ratio = min(max(current / self.total, 0.0), 1.0)
+        filled = int(self.width * ratio)
+        bar = "#" * filled + "-" * (self.width - filled)
+        sys.stdout.write(
+            f"\rProcessing texts [{bar}] {current}/{self.total} ({ratio * 100:5.1f}%)"
+        )
+        sys.stdout.flush()
+
+    def close(self) -> None:
+        if self.enabled:
+            sys.stdout.write("\n")
 
 
 def safe_divide(a: float, b: float) -> float:
@@ -420,19 +445,27 @@ def main() -> None:
     if not paths:
         raise SystemExit("No input files found.")
 
+    progress: Optional[ProgressBar] = ProgressBar(len(paths))
     with Path(args.output).open("w", newline="", encoding="utf-8") as out_f:
         writer = csv.writer(out_f)
         writer.writerow(["text_id", *COLUMN_NAMES])
 
         doc_stream = stream_texts(paths, lowercase=not args.keep_case)
-        for doc, meta in nlp.pipe(
-            doc_stream,
-            as_tuples=True,
-            batch_size=args.batch_size,
-            n_process=args.n_process,
+        for idx, (doc, meta) in enumerate(
+            nlp.pipe(
+                doc_stream,
+                as_tuples=True,
+                batch_size=args.batch_size,
+                n_process=args.n_process,
+            ),
+            start=1,
         ):
             result_row = [meta["text_id"], *analyze_doc(doc, morph_dict)]
             writer.writerow(result_row)
+            if progress:
+                progress.update(idx)
+    if progress:
+        progress.close()
 
 
 if __name__ == "__main__":
