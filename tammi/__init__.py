@@ -16,6 +16,12 @@ __version__ = "2.0.0"
 __author__ = "TAMMI Original Contributors"
 __maintainer__ = "Ali Rezaei"
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from tammi.analysis.analyzer import TAMMIAnalyzer
+    from tammi.analysis.morpholex import MorphoLexDict
+
 # Lazy imports to avoid circular dependencies
 # Note: Pylance may show warnings about __all__ entries not being present,
 # but this is a known limitation with lazy imports - they work at runtime.
