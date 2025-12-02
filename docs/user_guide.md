@@ -292,7 +292,7 @@ print(WriterFactory.available_types())  # ['csv', 'json', 'jsonl', 'sqlite', ...
 
 Place `.txt` files in a directory:
 
-```
+```text
 texts/
 ├── document1.txt
 ├── document2.txt
@@ -319,6 +319,7 @@ python tammi_cli.py --input-csv data.csv --text-column content --id-column doc_i
 ### JSON Format
 
 **Array format:**
+
 ```json
 [
     {"id": "doc1", "text": "The cat sat on the mat."},
@@ -327,6 +328,7 @@ python tammi_cli.py --input-csv data.csv --text-column content --id-column doc_i
 ```
 
 **Object format:**
+
 ```json
 {
     "documents": [
@@ -509,18 +511,21 @@ TAMMI produces 43 morphological metrics for each text:
 
 ### Common Issues
 
-**1. spaCy model not found**
+#### 1. spaCy model not found
+
 ```bash
 python -m spacy download en_core_web_sm
 ```
 
-**2. MorphoLex file not found**
+#### 2. MorphoLex file not found
+
 ```bash
 # Ensure the file is in the working directory or specify path
 python tammi_cli.py texts/ --morpholex /path/to/morpho_lex_df_w_log_w_prefsuf_no_head.csv
 ```
 
-**3. MySQL/PostgreSQL/MongoDB not available**
+#### 3. MySQL/PostgreSQL/MongoDB not available
+
 ```bash
 # Install the required driver
 pip install mysql-connector-python  # For MySQL
@@ -528,14 +533,16 @@ pip install psycopg2-binary         # For PostgreSQL
 pip install pymongo                 # For MongoDB
 ```
 
-**4. GPU not detected**
+#### 4. GPU not detected
+
 ```bash
 # Check if PyTorch sees your GPU
 python -c "import torch; print(torch.cuda.is_available())"  # CUDA
 python -c "import torch; print(torch.backends.mps.is_available())"  # MPS
 ```
 
-**5. Out of memory errors**
+#### 5. Out of memory errors
+
 ```bash
 # Reduce batch size
 python tammi_cli.py texts/ --batch-size 100 -o results.csv
