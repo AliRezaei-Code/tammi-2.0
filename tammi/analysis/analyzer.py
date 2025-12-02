@@ -15,8 +15,6 @@ from tammi.analysis.metrics import (
 from tammi.analysis.morpholex import MorphoLexDict
 
 if TYPE_CHECKING:
-    import spacy
-    from spacy.tokens import Doc
 
 
 def list_windows(seq: Sequence[Any], size: int) -> Iterator[Sequence[Any]]:
