@@ -200,7 +200,8 @@ class SQLiteWriter(OutputWriter):
             )
         '''
         self._cursor.execute(create_sql)
-        self._conn.commit()
+        if self._conn:
+            self._conn.commit()
     
     def write_header(self, columns: List[str]) -> None:
         """Headers handled in table creation."""
@@ -217,7 +218,8 @@ class SQLiteWriter(OutputWriter):
         """Write multiple records."""
         for text_id, values in records:
             self.write_record(text_id, values)
-        self._conn.commit()
+        if self._conn:
+            self._conn.commit()
         return len(records)
     
     def close(self) -> None:
@@ -299,7 +301,8 @@ class MySQLWriter(OutputWriter):
             )
         '''
         self._cursor.execute(create_sql)
-        self._conn.commit()
+        if self._conn:
+            self._conn.commit()
     
     def write_header(self, columns: List[str]) -> None:
         pass
@@ -314,7 +317,8 @@ class MySQLWriter(OutputWriter):
     def write_batch(self, records: List[Tuple[str, List[float]]]) -> int:
         for text_id, values in records:
             self.write_record(text_id, values)
-        self._conn.commit()
+        if self._conn:
+            self._conn.commit()
         return len(records)
     
     def close(self) -> None:
@@ -393,7 +397,8 @@ class PostgreSQLWriter(OutputWriter):
             )
         '''
         self._cursor.execute(create_sql)
-        self._conn.commit()
+        if self._conn:
+            self._conn.commit()
     
     def write_header(self, columns: List[str]) -> None:
         pass
@@ -412,7 +417,8 @@ class PostgreSQLWriter(OutputWriter):
     def write_batch(self, records: List[Tuple[str, List[float]]]) -> int:
         for text_id, values in records:
             self.write_record(text_id, values)
-        self._conn.commit()
+        if self._conn:
+            self._conn.commit()
         return len(records)
     
     def close(self) -> None:
@@ -480,7 +486,7 @@ class MongoDBWriter(OutputWriter):
         pass
     
     def write_record(self, text_id: str, values: List[float]) -> None:
-        doc = {"_id": text_id, "text_id": text_id}
+        doc: Dict[str, Any] = {"_id": text_id, "text_id": text_id}
         for col, val in zip(self.columns, values):
             doc[col] = val
         self._collection.replace_one({"_id": text_id}, doc, upsert=True)
@@ -490,7 +496,7 @@ class MongoDBWriter(OutputWriter):
         
         operations = []
         for text_id, values in records:
-            doc = {"_id": text_id, "text_id": text_id}
+            doc: Dict[str, Any] = {"_id": text_id, "text_id": text_id}
             for col, val in zip(self.columns, values):
                 doc[col] = val
             operations.append(

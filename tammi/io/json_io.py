@@ -36,35 +36,42 @@ class JSONReader(InputReader):
     
     def _load_data(self) -> List[Dict[str, Any]]:
         """Load and parse JSON data."""
-        if self._data is None:
-            with self.path.open(encoding=self.encoding) as f:
-                raw_data = json.load(f)
+        if self._data is not None:
+            return self._data
             
-            # Handle different JSON structures
-            if isinstance(raw_data, list):
-                self._data = raw_data
-            elif isinstance(raw_data, dict):
-                if self.records_key and self.records_key in raw_data:
-                    self._data = raw_data[self.records_key]
-                elif "records" in raw_data:
-                    self._data = raw_data["records"]
-                elif "data" in raw_data:
-                    self._data = raw_data["data"]
-                else:
-                    # Try to find a list value
-                    for value in raw_data.values():
-                        if isinstance(value, list):
-                            self._data = value
-                            break
-                    if self._data is None:
-                        raise ValueError(
-                            f"Could not find records in JSON. "
-                            f"Specify records_key or use array format."
-                        )
-            else:
-                raise ValueError(f"Unexpected JSON format: {type(raw_data)}")
+        with self.path.open(encoding=self.encoding) as f:
+            raw_data = json.load(f)
         
-        return self._data
+        data: List[Dict[str, Any]]
+        
+        # Handle different JSON structures
+        if isinstance(raw_data, list):
+            data = raw_data
+        elif isinstance(raw_data, dict):
+            if self.records_key and self.records_key in raw_data:
+                data = raw_data[self.records_key]
+            elif "records" in raw_data:
+                data = raw_data["records"]
+            elif "data" in raw_data:
+                data = raw_data["data"]
+            else:
+                # Try to find a list value
+                found_data: List[Dict[str, Any]] | None = None
+                for value in raw_data.values():
+                    if isinstance(value, list):
+                        found_data = value
+                        break
+                if found_data is None:
+                    raise ValueError(
+                        f"Could not find records in JSON. "
+                        f"Specify records_key or use array format."
+                    )
+                data = found_data
+        else:
+            raise ValueError(f"Unexpected JSON format: {type(raw_data)}")
+        
+        self._data = data
+        return data
     
     def stream(self, lowercase: bool = True) -> Iterator[Tuple[str, Dict[str, str]]]:
         """Stream text records from JSON."""
@@ -215,7 +222,7 @@ class JSONLWriter(OutputWriter):
         self.path = Path(path)
         self.columns = columns
         self.encoding = encoding
-        self._file = self.path.open("w", encoding=encoding)
+        self._file: Any = self.path.open("w", encoding=encoding)
         self._header_written = False
     
     def write_header(self, columns: List[str]) -> None:
@@ -232,7 +239,8 @@ class JSONLWriter(OutputWriter):
         for col, val in zip(self.columns, values):
             record[col] = val
         
-        self._file.write(json.dumps(record) + "\n")
+        if self._file:
+            self._file.write(json.dumps(record) + "\n")
     
     def write_batch(self, records: List[Tuple[str, List[float]]]) -> int:
         """Write multiple records."""
