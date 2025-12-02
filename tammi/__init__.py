@@ -17,6 +17,8 @@ __author__ = "TAMMI Original Contributors"
 __maintainer__ = "Ali Rezaei"
 
 # Lazy imports to avoid circular dependencies
+# Note: Pylance may show warnings about __all__ entries not being present,
+# but this is a known limitation with lazy imports - they work at runtime.
 def __getattr__(name: str):
     if name == "TAMMIAnalyzer":
         from tammi.analysis.analyzer import TAMMIAnalyzer
@@ -26,4 +28,4 @@ def __getattr__(name: str):
         return MorphoLexDict
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
-__all__ = ["TAMMIAnalyzer", "MorphoLexDict", "__version__"]
+__all__ = ["TAMMIAnalyzer", "MorphoLexDict", "__version__"]  # noqa: F822

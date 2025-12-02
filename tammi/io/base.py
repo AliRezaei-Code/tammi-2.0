@@ -198,7 +198,8 @@ class WriterFactory:
             raise ValueError(
                 f"Unknown destination type: {dest_type}. Available: {available}"
             )
-        writer = writer_class(columns=columns, **kwargs)
+        # Type ignore: concrete writer classes accept columns parameter
+        writer = writer_class(columns=columns, **kwargs)  # type: ignore[call-arg]
         return writer
     
     @classmethod
