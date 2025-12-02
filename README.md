@@ -86,7 +86,7 @@ TAMMI 2.0 depends on MorphoLex to calculate variables related to frequency/lengt
 ## 👥 Contributors
 
 - **TAMMI Original Contributors** - Original implementation and Jupyter notebook
-- **Ali Rezaei** (ali0rezaei0@gmail.com) - CLI tool and package refactoring:
+- **Ali Rezaei** (<ali0rezaei0@gmail.com>) - CLI tool and package refactoring:
   - Command-line interface for batch processing
   - JSON/JSONL input/output support  
   - MongoDB database support
