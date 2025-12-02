@@ -348,7 +348,7 @@ CRC (Class-Responsibility-Collaboration) cards describe the responsibilities of 
 
 ## Collaboration Diagram
 
-```
+```text
                               ┌─────────────────┐
                               │   CLI (main.py) │
                               └────────┬────────┘
@@ -379,7 +379,7 @@ CRC (Class-Responsibility-Collaboration) cards describe the responsibilities of 
 
 ## Sequence Diagram: Typical Analysis Run
 
-```
+```text
 User          CLI          TAMMIRunner    InputReader    TAMMIAnalyzer    OutputWriter
   │            │               │              │               │               │
   │──command──▶│               │              │               │               │
