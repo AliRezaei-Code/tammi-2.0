@@ -8,7 +8,7 @@ name = "tammi-morphology"
 version = "2.0.0"
 description = "Tool for Automatic Measurement of Morphological Information - CLI and Python package for morphological complexity analysis"
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "CC BY-NC-SA 4.0"}
 authors = [
     {name = "TAMMI Original Contributors"}
 ]
@@ -18,7 +18,7 @@ maintainers = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
+    "License :: Free for non-commercial use",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
