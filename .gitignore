@@ -1,1 +1,9 @@
 /responses
+runlog.txt
+*.log
+*.tmp
+.DS_Store
+.vscode/
+.idea/
+
+/output
