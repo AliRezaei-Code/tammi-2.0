@@ -516,6 +516,152 @@ def _prompt_int(prompt: str, default: int) -> int:
             print("Please enter a whole number.")
 
 
+# =============================================================================
+# Enhanced Interactive Menu Helpers
+# =============================================================================
+
+def _clear_line() -> None:
+    """Clear the current line in terminal."""
+    sys.stdout.write("\r\033[K")
+    sys.stdout.flush()
+
+
+def _print_menu_header(title: str) -> None:
+    """Print a styled menu section header."""
+    print(f"\n{'─' * 50}")
+    print(f"  {title}")
+    print(f"{'─' * 50}")
+
+
+def _prompt_choice(
+    prompt: str,
+    options: List[str],
+    default_index: int = 0,
+    allow_custom: bool = False,
+    custom_label: str = "Enter custom value",
+) -> Tuple[int, str]:
+    """
+    Display a numbered menu and let user pick an option.
+    Returns (selected_index, selected_value).
+    If allow_custom and user picks custom, returns (-1, custom_value).
+    """
+    print(f"\n  {prompt}")
+    for i, opt in enumerate(options):
+        marker = "→" if i == default_index else " "
+        print(f"    {marker} [{i + 1}] {opt}")
+    if allow_custom:
+        print(f"      [{len(options) + 1}] {custom_label}")
+
+    max_choice = len(options) + (1 if allow_custom else 0)
+    while True:
+        hint = f"1-{max_choice}" if max_choice > 1 else "1"
+        raw = input(f"  Enter choice ({hint}) [default: {default_index + 1}]: ").strip()
+        if not raw:
+            return default_index, options[default_index]
+        try:
+            choice = int(raw)
+            if 1 <= choice <= len(options):
+                return choice - 1, options[choice - 1]
+            if allow_custom and choice == len(options) + 1:
+                custom_val = input(f"  {custom_label}: ").strip()
+                return -1, custom_val
+            print(f"  Please enter a number between 1 and {max_choice}.")
+        except ValueError:
+            print(f"  Invalid input. Enter a number between 1 and {max_choice}.")
+
+
+def _prompt_yes_no(prompt: str, default: bool = True) -> bool:
+    """
+    Display a Yes/No choice menu.
+    """
+    options = ["Yes", "No"]
+    default_idx = 0 if default else 1
+    idx, _ = _prompt_choice(prompt, options, default_index=default_idx)
+    return idx == 0
+
+
+def _prompt_int_with_suggestions(
+    prompt: str,
+    suggestions: List[int],
+    default: int,
+    allow_custom: bool = True,
+) -> int:
+    """
+    Display suggested integer values as choices.
+    """
+    options = [str(s) for s in suggestions]
+    try:
+        default_idx = suggestions.index(default)
+    except ValueError:
+        default_idx = 0
+
+    idx, val = _prompt_choice(
+        prompt,
+        options,
+        default_index=default_idx,
+        allow_custom=allow_custom,
+        custom_label="Enter custom number",
+    )
+    if idx == -1:
+        # Custom value entered
+        try:
+            return int(val)
+        except ValueError:
+            print(f"  Invalid number, using default: {default}")
+            return default
+    return suggestions[idx]
+
+
+def _discover_input_folders(base_path: Path = Path(".")) -> List[Path]:
+    """
+    Find directories that likely contain text files for processing.
+    """
+    candidates = []
+    for item in base_path.iterdir():
+        if item.is_dir() and not item.name.startswith((".", "_")):
+            # Check if it has any .txt files
+            txt_files = list(item.glob("*.txt"))[:5]  # Sample check
+            if txt_files:
+                candidates.append(item)
+    return sorted(candidates)
+
+
+def _discover_morpholex_files(base_path: Path = Path(".")) -> List[Path]:
+    """
+    Find potential MorphoLex CSV files in the current directory.
+    """
+    candidates = []
+    for item in base_path.iterdir():
+        if item.is_file() and item.suffix.lower() == ".csv":
+            if "morph" in item.name.lower() or "lex" in item.name.lower():
+                candidates.append(item)
+    return sorted(candidates)
+
+
+def _discover_spacy_models() -> List[str]:
+    """
+    Find installed spaCy models.
+    """
+    try:
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, "-m", "spacy", "info", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            import json
+            info = json.loads(result.stdout)
+            pipelines = info.get("pipelines", {})
+            if pipelines:
+                return list(pipelines.keys())
+    except Exception:
+        pass
+    # Fallback to common models
+    return ["en_core_web_sm", "en_core_web_md", "en_core_web_lg", "en_core_web_trf"]
+
+
 def quick_cpu_probe(sample_size: int = 2000) -> Tuple[int, int, float]:
     """
     Run a very small benchmark to suggest n_process and batch_size.
@@ -555,48 +701,228 @@ def interactive_menu(
     suggested_batch: int,
 ) -> argparse.Namespace:
     """
-    Collect CLI options via prompts so the tool can run with no positional args.
+    Enhanced interactive menu with numbered choices for easier use.
     """
+    print("\n" + "=" * 60)
+    print("  🔬 TAMMI - Tool for Automatic Measurement of Morphological Info")
+    print("=" * 60)
+    print("  Use number keys to select options. Press Enter for defaults.\n")
 
-    print("TAMMI interactive menu (press Enter to accept defaults)")
-    while True:
-        raw_inputs = input(
-            "Enter text files or directories (comma-separated)"
-            f"{' [' + ', '.join(base_args.inputs) + ']' if base_args.inputs else ''}: "
-        ).strip()
-        inputs = (
-            [item.strip() for item in raw_inputs.split(",") if item.strip()]
-            if raw_inputs
-            else list(base_args.inputs)
+    # -------------------------------------------------------------------------
+    # 1. INPUT SELECTION
+    # -------------------------------------------------------------------------
+    _print_menu_header("📁 Step 1: Select Input Files/Folders")
+    
+    # Discover available folders with text files
+    available_folders = _discover_input_folders()
+    
+    if available_folders:
+        folder_options = [f"{f.name}/ ({len(list(f.glob('*.txt')))} .txt files)" for f in available_folders]
+        folder_options.append("Enter custom path(s)")
+        
+        print("\n  Found folders with text files:")
+        idx, _ = _prompt_choice(
+            "Select input folder:",
+            folder_options,
+            default_index=0,
         )
-        if inputs:
-            break
-        print("At least one input path is required.")
-
-    model = _prompt_with_default("spaCy model", base_args.model)
-    morpholex = _prompt_with_default("MorphoLex CSV path", base_args.morpholex)
-    output = _prompt_with_default("Output CSV path", base_args.output)
-    ext = _prompt_with_default("File extensions (comma-separated)", base_args.ext)
-    recursive = _prompt_bool("Recurse into subdirectories", base_args.recursive)
-    keep_case = _prompt_bool("Keep case (do not lowercase text)", base_args.keep_case)
-    
-    # GPU option
-    gpu_available, gpu_msg = check_gpu_available()
-    if gpu_available:
-        print(f"  ({gpu_msg})")
-        use_gpu = _prompt_bool("Use GPU acceleration", base_args.use_gpu)
+        
+        if idx == len(available_folders):
+            # Custom path
+            raw_inputs = input("\n  Enter file/folder paths (comma-separated): ").strip()
+            inputs = [p.strip() for p in raw_inputs.split(",") if p.strip()]
+        else:
+            inputs = [str(available_folders[idx])]
     else:
-        print(f"  (GPU not available: {gpu_msg})")
+        # No folders found, ask for manual input
+        while True:
+            raw_inputs = input("  Enter text files or directories (comma-separated): ").strip()
+            inputs = [p.strip() for p in raw_inputs.split(",") if p.strip()]
+            if inputs:
+                break
+            print("  ⚠️  At least one input path is required.")
+
+    # -------------------------------------------------------------------------
+    # 2. SPACY MODEL SELECTION
+    # -------------------------------------------------------------------------
+    _print_menu_header("🧠 Step 2: Select spaCy Model")
+    
+    available_models = _discover_spacy_models()
+    model_descriptions = {
+        "en_core_web_sm": "Small (fast, ~12MB)",
+        "en_core_web_md": "Medium (balanced, ~40MB)", 
+        "en_core_web_lg": "Large (accurate, ~560MB)",
+        "en_core_web_trf": "Transformer (most accurate, ~500MB, GPU recommended)",
+    }
+    
+    model_options = []
+    for m in available_models:
+        desc = model_descriptions.get(m, "")
+        model_options.append(f"{m} {f'- {desc}' if desc else ''}")
+    
+    try:
+        default_model_idx = available_models.index(base_args.model)
+    except ValueError:
+        default_model_idx = 0
+    
+    idx, selected_value = _prompt_choice(
+        "Select spaCy model:",
+        model_options,
+        default_index=default_model_idx,
+        allow_custom=True,
+        custom_label="Enter different model name",
+    )
+    model = available_models[idx] if idx >= 0 else selected_value
+
+    # -------------------------------------------------------------------------
+    # 3. MORPHOLEX FILE SELECTION
+    # -------------------------------------------------------------------------
+    _print_menu_header("📖 Step 3: Select MorphoLex Dictionary")
+    
+    morpholex_files = _discover_morpholex_files()
+    if morpholex_files:
+        morph_options = [str(f) for f in morpholex_files]
+        try:
+            default_morph_idx = morph_options.index(base_args.morpholex)
+        except ValueError:
+            default_morph_idx = 0
+        
+        idx, morpholex = _prompt_choice(
+            "Select MorphoLex CSV file:",
+            morph_options,
+            default_index=default_morph_idx,
+            allow_custom=True,
+            custom_label="Enter custom path",
+        )
+        if idx >= 0:
+            morpholex = morph_options[idx]
+    else:
+        morpholex = _prompt_with_default("  MorphoLex CSV path", base_args.morpholex)
+
+    # -------------------------------------------------------------------------
+    # 4. OUTPUT FILE
+    # -------------------------------------------------------------------------
+    _print_menu_header("💾 Step 4: Output Settings")
+    
+    output_suggestions = [
+        "morphemes.csv",
+        "tammi_results.csv", 
+        "output/results.csv",
+    ]
+    # Add input-based suggestion
+    if inputs:
+        input_name = Path(inputs[0]).stem
+        output_suggestions.insert(0, f"{input_name}_morphemes.csv")
+    
+    idx, output = _prompt_choice(
+        "Select output filename:",
+        output_suggestions,
+        default_index=0,
+        allow_custom=True,
+        custom_label="Enter custom filename",
+    )
+    if idx >= 0:
+        output = output_suggestions[idx]
+
+    # -------------------------------------------------------------------------
+    # 5. FILE EXTENSIONS
+    # -------------------------------------------------------------------------
+    ext_options = [".txt", ".txt,.md", ".txt,.text", ".txt,.md,.rst"]
+    idx, ext = _prompt_choice(
+        "File extensions to process:",
+        ext_options,
+        default_index=0,
+        allow_custom=True,
+        custom_label="Enter custom extensions (comma-separated)",
+    )
+    if idx >= 0:
+        ext = ext_options[idx]
+
+    # -------------------------------------------------------------------------
+    # 6. RECURSIVE SEARCH
+    # -------------------------------------------------------------------------
+    recursive = _prompt_yes_no("Search subdirectories recursively?", default=False)
+
+    # -------------------------------------------------------------------------
+    # 7. TEXT CASE
+    # -------------------------------------------------------------------------
+    _print_menu_header("⚙️  Step 5: Processing Options")
+    
+    case_options = ["Lowercase text (recommended for TAMMI)", "Keep original case"]
+    idx, _ = _prompt_choice("Text case handling:", case_options, default_index=0)
+    keep_case = (idx == 1)
+
+    # -------------------------------------------------------------------------
+    # 8. GPU vs CPU
+    # -------------------------------------------------------------------------
+    _print_menu_header("🚀 Step 6: Performance Settings")
+    
+    gpu_available, gpu_msg = check_gpu_available()
+    cores = os.cpu_count() or 1
+    
+    if gpu_available:
+        print(f"\n  ✅ {gpu_msg}")
+        processing_options = [
+            f"CPU multi-processing ({suggested_n_process} processes recommended)",
+            "GPU acceleration (single process, good for large docs)",
+        ]
+        idx, _ = _prompt_choice("Select processing mode:", processing_options, default_index=0)
+        use_gpu = (idx == 1)
+    else:
+        print(f"\n  ℹ️  GPU not available: {gpu_msg}")
+        print("  Using CPU multi-processing.")
         use_gpu = False
+
+    # -------------------------------------------------------------------------
+    # 9. BATCH SIZE
+    # -------------------------------------------------------------------------
+    batch_suggestions = [500, 1000, 1500, 2000, 5000]
+    if suggested_batch not in batch_suggestions:
+        batch_suggestions.insert(0, suggested_batch)
+    batch_suggestions = sorted(set(batch_suggestions))
     
-    batch_size = _prompt_int("spaCy batch size", base_args.batch_size)
-    
-    # If GPU is enabled, n_process must be 1
+    batch_size = _prompt_int_with_suggestions(
+        f"Batch size (suggested: {suggested_batch}):",
+        batch_suggestions,
+        default=suggested_batch,
+    )
+
+    # -------------------------------------------------------------------------
+    # 10. N_PROCESS (only if not GPU)
+    # -------------------------------------------------------------------------
     if use_gpu:
-        print("  (GPU mode: n_process forced to 1)")
+        print("\n  ℹ️  GPU mode: using single process")
         n_process = 1
     else:
-        n_process = _prompt_int("spaCy n_process", base_args.n_process)
+        process_suggestions = [1, 2, 4, max(1, cores // 2), max(1, cores - 1)]
+        process_suggestions = sorted(set(process_suggestions))
+        
+        n_process = _prompt_int_with_suggestions(
+            f"Number of CPU processes (cores detected: {cores}):",
+            process_suggestions,
+            default=suggested_n_process,
+        )
+
+    # -------------------------------------------------------------------------
+    # SUMMARY
+    # -------------------------------------------------------------------------
+    _print_menu_header("📋 Configuration Summary")
+    print(f"""
+  Input:        {', '.join(inputs)}
+  Model:        {model}
+  MorphoLex:    {morpholex}
+  Output:       {output}
+  Extensions:   {ext}
+  Recursive:    {'Yes' if recursive else 'No'}
+  Keep case:    {'Yes' if keep_case else 'No'}
+  GPU:          {'Yes' if use_gpu else 'No'}
+  Batch size:   {batch_size}
+  Processes:    {n_process}
+""")
+    
+    if not _prompt_yes_no("Proceed with these settings?", default=True):
+        print("\n  Cancelled. Run again to reconfigure.")
+        raise SystemExit(0)
 
     return argparse.Namespace(
         inputs=inputs,
@@ -607,8 +933,8 @@ def interactive_menu(
         recursive=recursive,
         keep_case=keep_case,
         use_gpu=use_gpu,
-        batch_size=batch_size or suggested_batch,
-        n_process=n_process if not use_gpu else 1,
+        batch_size=batch_size,
+        n_process=n_process,
         menu=False,
     )
 
