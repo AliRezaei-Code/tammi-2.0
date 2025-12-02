@@ -7,3 +7,10 @@ runlog.txt
 .idea/
 
 /output
+/archive
+
+/__pycache__/
+*.pyc
+.env
+.venv
+morphemes.csv
