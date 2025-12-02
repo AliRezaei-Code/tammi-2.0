@@ -12,7 +12,6 @@ __author__ = "Ali Rezaei"
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Type, TYPE_CHECKING
 
 if TYPE_CHECKING:
