@@ -13,6 +13,7 @@ tammi.__maintainer__  # "Ali Rezaei"
 ```
 
 **Exports:**
+
 - `TAMMIAnalyzer` - Main analysis class
 - `MorphoLexDict` - MorphoLex dictionary loader
 
@@ -160,7 +161,7 @@ DERIVATIONAL_AFFIX_INDICES: List[int]
 # Column indices for derivational affix data in MorphoLex
 ```
 
-#### Functions
+#### Utility Functions
 
 ```python
 def safe_divide(numerator: float, denominator: float) -> float:
