@@ -6,6 +6,12 @@ Refactored into modular structure by Ali Rezaei.
 
 __author__ = "Ali Rezaei"
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from tammi.analysis.analyzer import TAMMIAnalyzer
+    from tammi.analysis.morpholex import MorphoLexDict
+
 from tammi.analysis.metrics import COLUMN_NAMES, DERIVATIONAL_AFFIX_INDICES
 
 # Lazy imports to avoid circular dependencies
