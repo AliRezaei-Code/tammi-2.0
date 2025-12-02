@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tammi.io.base import ReaderFactory, WriterFactory, AVAILABLE_DRIVERS
+from tammi.io.base import ReaderFactory, WriterFactory
 from tammi.io.csv_io import CSVReader, CSVWriter
 from tammi.io.json_io import JSONReader, JSONWriter, JSONLReader, JSONLWriter
 from tammi.io.file_io import TextFileReader
