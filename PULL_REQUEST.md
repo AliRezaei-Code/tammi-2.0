@@ -10,7 +10,7 @@ This PR introduces a major refactoring of TAMMI (Tool for Automatic Measurement 
 
 Refactored `tammi_cli.py` into a proper Python package:
 
-```
+```text
 tammi/
 ├── __init__.py              # Package root with lazy imports
 ├── analysis/                # Morphological analysis module
@@ -61,6 +61,7 @@ tammi/
 ### Documentation
 
 New `docs/` folder with comprehensive documentation:
+
 - `user_guide.md` - Installation and usage
 - `api_reference.md` - Detailed API docs
 - `architecture.md` - System design with diagrams
@@ -81,12 +82,14 @@ New `docs/` folder with comprehensive documentation:
 ## Migration Guide
 
 No changes needed for basic usage:
+
 ```bash
 # Still works the same
 python tammi_cli.py texts/ -o results.csv
 ```
 
 New features available:
+
 ```bash
 # JSON input/output
 python tammi_cli.py --input-json data.json -o results.json --output-json
@@ -95,7 +98,7 @@ python tammi_cli.py --input-json data.json -o results.json --output-json
 python tammi_cli.py --menu
 ```
 
-## Testing
+## Testing Commands
 
 ```bash
 # Run unit tests
@@ -122,6 +125,7 @@ python tammi_cli.py test_texts/ -o test_output.csv
 ## Files Changed
 
 ### New Files
+
 - `tammi/` - Entire package (19 Python files)
 - `docs/` - Documentation (6 markdown files)
 - `pyproject.toml` - Package configuration
@@ -129,10 +133,11 @@ python tammi_cli.py test_texts/ -o test_output.csv
 - `tammi_cli_legacy.py` - Backup of original code
 
 ### Modified Files
+
 - `tammi_cli.py` - Now a thin wrapper
 - `README.md` - Updated with new features
 - `.gitignore` - Comprehensive exclusions
 
 ---
 
-**Author**: Ali Rezaei (ali0rezaei0@gmail.com)
+**Author**: Ali Rezaei (<ali0rezaei0@gmail.com>)
