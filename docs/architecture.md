@@ -3,6 +3,7 @@
 ## Design Philosophy
 
 TAMMI v2.0 was refactored with the following goals:
+
 - **Modularity**: Separate concerns into distinct modules
 - **Extensibility**: Easy to add new input/output formats
 - **Testability**: Comprehensive unit test coverage
@@ -10,7 +11,7 @@ TAMMI v2.0 was refactored with the following goals:
 
 ## Architecture Diagram
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              TAMMI CLI (main.py)                            │
 │                         Command-line argument parsing                        │
@@ -52,7 +53,7 @@ TAMMI v2.0 was refactored with the following goals:
 
 The Strategy Pattern allows interchangeable algorithms (I/O formats) at runtime.
 
-```
+```text
 ┌──────────────────────────────────────────────────────────────┐
 │                    <<abstract>>                               │
 │                    InputReader                                │
@@ -93,7 +94,7 @@ reader = ReaderFactory.create("json", path="data.json", text_column="content")
 reader = ReaderFactory.create("sqlite", db_config=config)
 ```
 
-```
+```text
 ┌────────────────────────────────────────────────────────────────┐
 │                      ReaderFactory                              │
 ├────────────────────────────────────────────────────────────────┤
@@ -109,7 +110,7 @@ reader = ReaderFactory.create("sqlite", db_config=config)
 
 The `TAMMIRunner.run()` method defines the skeleton of the analysis algorithm.
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                       TAMMIRunner.run()                          │
 ├─────────────────────────────────────────────────────────────────┤
@@ -124,7 +125,7 @@ The `TAMMIRunner.run()` method defines the skeleton of the analysis algorithm.
 
 ## Module Dependencies
 
-```
+```text
 tammi/
 ├── __init__.py
 │   └── imports: analysis.analyzer, analysis.morpholex
@@ -172,7 +173,7 @@ tammi/
 
 ### Input Processing Flow
 
-```
+```text
 Text Input Sources          Processing                    Output Destinations
 ─────────────────          ──────────                    ───────────────────
 
@@ -211,7 +212,7 @@ Text Input Sources          Processing                    Output Destinations
 
 ### Analysis Pipeline Detail
 
-```
+```text
 Input Text
     │
     ▼
@@ -266,7 +267,7 @@ Results Dictionary (43 metrics)
 
 ## Error Handling Strategy
 
-```
+```text
 ┌────────────────────────────────────────────────────────────────┐
 │                     Error Handling Layers                       │
 ├────────────────────────────────────────────────────────────────┤
@@ -326,7 +327,7 @@ class XMLReader(InputReader):
 ReaderFactory.register("xml", XMLReader)
 ```
 
-2. Add CLI argument in `main.py`:
+1. Add CLI argument in `main.py`:
 
 ```python
 parser.add_argument("--input-xml", metavar="XML_PATH", help="...")

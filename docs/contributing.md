@@ -25,11 +25,14 @@ Thank you for your interest in contributing to TAMMI! This document provides gui
 
 1. Fork the repository on GitHub
 2. Clone your fork:
+   
    ```bash
    git clone https://github.com/YOUR_USERNAME/tammi.git
    cd tammi
    ```
+   
 3. Add upstream remote:
+   
    ```bash
    git remote add upstream https://github.com/ORIGINAL_OWNER/tammi.git
    ```
@@ -54,7 +57,7 @@ python -m spacy download en_core_web_sm
 
 ### Project Structure
 
-```
+```text
 tammi/
 ├── tammi/                  # Main package
 │   ├── __init__.py
@@ -103,6 +106,7 @@ ruff check --fix tammi/
 - For optional imports (mysql, psycopg2, etc.), use `# type: ignore[import-not-found]`
 
 Example:
+
 ```python
 from __future__ import annotations
 
@@ -161,6 +165,7 @@ pytest tammi/tests/ -v
 Place tests in `tammi/tests/`. Follow the naming convention `test_*.py`.
 
 Example test:
+
 ```python
 import unittest
 from tammi.io.csv_io import CSVReader
@@ -209,6 +214,7 @@ open htmlcov/index.html
 ### Before Submitting
 
 1. **Create a branch:**
+   
    ```bash
    git checkout -b feature/your-feature-name
    ```
@@ -216,11 +222,13 @@ open htmlcov/index.html
 2. **Make your changes**
 
 3. **Run tests:**
+   
    ```bash
    python -m unittest discover tammi/tests/ -v
    ```
 
 4. **Format code:**
+   
    ```bash
    black tammi/
    ruff check --fix tammi/
@@ -229,6 +237,7 @@ open htmlcov/index.html
 5. **Update documentation** if needed
 
 6. **Commit with clear message:**
+   
    ```bash
    git add .
    git commit -m "Add feature: description of what you added"
@@ -237,6 +246,7 @@ open htmlcov/index.html
 ### Submitting
 
 1. Push to your fork:
+   
    ```bash
    git push origin feature/your-feature-name
    ```
@@ -295,19 +305,21 @@ class NewFormatReader(InputReader):
 ReaderFactory.register("newformat", NewFormatReader)
 ```
 
-2. Add to `tammi/io/__init__.py`:
+1. Add to `tammi/io/__init__.py`:
+
 ```python
 from tammi.io.newformat_io import NewFormatReader
 ```
 
-3. Add CLI argument in `tammi/cli/main.py`:
+2. Add CLI argument in `tammi/cli/main.py`:
+
 ```python
 parser.add_argument("--input-newformat", metavar="PATH", help="...")
 ```
 
-4. Write tests in `tammi/tests/test_io.py`
+3. Write tests in `tammi/tests/test_io.py`
 
-5. Update documentation
+4. Update documentation
 
 ### Adding New Metrics
 
