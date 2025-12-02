@@ -5,6 +5,13 @@ Command-line runner for TAMMI (Tool for Automatic Measurement of Morphological I
 This script rewrites the notebook workflow into a reusable CLI that can process many text
 files efficiently. It streams texts through spaCy, loads the MorphoLex CSV once, and writes
 results straight to a CSV so very large batches don't require holding everything in memory.
+
+Supports input/output via:
+- CSV files
+- Text files (.txt)
+- SQLite databases
+- MySQL databases
+- PostgreSQL databases
 """
 
 from __future__ import annotations
@@ -15,11 +22,84 @@ import os
 import sys
 import time
 from collections import Counter
+from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple, Union
+from urllib.parse import urlparse
 
 import spacy
+
+
+# =============================================================================
+# Database Support - Optional Imports
+# =============================================================================
+
+def _check_db_drivers() -> Dict[str, bool]:
+    """Check which database drivers are available."""
+    drivers = {}
+    try:
+        import sqlite3  # noqa: F401
+        drivers["sqlite"] = True
+    except ImportError:
+        drivers["sqlite"] = False
+    
+    try:
+        import mysql.connector  # noqa: F401
+        drivers["mysql"] = True
+    except ImportError:
+        drivers["mysql"] = False
+    
+    try:
+        import psycopg2  # noqa: F401
+        drivers["postgresql"] = True
+    except ImportError:
+        drivers["postgresql"] = False
+    
+    return drivers
+
+
+DB_DRIVERS = _check_db_drivers()
+
+
+@dataclass
+class DatabaseConfig:
+    """Configuration for database connections."""
+    db_type: str  # 'sqlite', 'mysql', 'postgresql'
+    host: str = "localhost"
+    port: int = 0
+    database: str = ""
+    username: str = ""
+    password: str = ""
+    table: str = "tammi_results"
+    text_column: str = "text_content"
+    id_column: str = "text_id"
+    
+    def get_connection(self):
+        """Get a database connection based on config."""
+        if self.db_type == "sqlite":
+            import sqlite3
+            return sqlite3.connect(self.database)
+        elif self.db_type == "mysql":
+            import mysql.connector
+            return mysql.connector.connect(
+                host=self.host,
+                port=self.port or 3306,
+                database=self.database,
+                user=self.username,
+                password=self.password,
+            )
+        elif self.db_type == "postgresql":
+            import psycopg2
+            return psycopg2.connect(
+                host=self.host,
+                port=self.port or 5432,
+                dbname=self.database,
+                user=self.username,
+                password=self.password,
+            )
+        else:
+            raise ValueError(f"Unsupported database type: {self.db_type}")
 
 
 COLUMN_NAMES: List[str] = [
@@ -169,6 +249,120 @@ def load_morph_dict(path: Path) -> Dict[str, List]:
                     values.append(val)
             morph_dict[key] = values
     return morph_dict
+
+
+# =============================================================================
+# Input/Output Sources - Files and Databases
+# =============================================================================
+
+@dataclass
+class IOConfig:
+    """Configuration for input/output sources."""
+    source_type: str  # 'files', 'csv', 'database'
+    # For files
+    paths: List[str] = None  # type: ignore
+    extensions: Tuple[str, ...] = (".txt",)
+    recursive: bool = False
+    # For CSV input
+    csv_path: str = ""
+    text_column: str = "text"
+    id_column: str = "id"
+    # For database
+    db_config: Optional[DatabaseConfig] = None
+    
+    def __post_init__(self):
+        if self.paths is None:
+            self.paths = []
+
+
+def _discover_csv_files(base_path: Path = Path(".")) -> List[Path]:
+    """Find CSV files that could be used as input/output."""
+    candidates = []
+    for item in base_path.iterdir():
+        if item.is_file() and item.suffix.lower() == ".csv":
+            candidates.append(item)
+    return sorted(candidates)
+
+
+def stream_texts_from_csv(
+    csv_path: Path, 
+    text_column: str, 
+    id_column: str, 
+    lowercase: bool
+) -> Iterator[Tuple[str, Dict[str, str]]]:
+    """Stream texts from a CSV file."""
+    with csv_path.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            text = row.get(text_column, "")
+            text_id = row.get(id_column, "")
+            if lowercase:
+                text = text.lower()
+            yield text, {"text_id": text_id}
+
+
+def stream_texts_from_database(
+    db_config: DatabaseConfig, 
+    lowercase: bool
+) -> Iterator[Tuple[str, Dict[str, str]]]:
+    """Stream texts from a database table."""
+    conn = db_config.get_connection()
+    cursor = conn.cursor()
+    
+    query = f"SELECT {db_config.id_column}, {db_config.text_column} FROM {db_config.table}"
+    cursor.execute(query)
+    
+    for row in cursor:
+        text_id, text = row[0], row[1] or ""
+        if lowercase:
+            text = text.lower()
+        yield text, {"text_id": str(text_id)}
+    
+    cursor.close()
+    conn.close()
+
+
+def write_results_to_database(
+    db_config: DatabaseConfig,
+    results: List[Tuple[str, List[float]]],
+) -> int:
+    """Write TAMMI results to a database table."""
+    conn = db_config.get_connection()
+    cursor = conn.cursor()
+    
+    # Create table if not exists - quote column names for special characters
+    columns_sql = ", ".join([f'"{col}" REAL' for col in COLUMN_NAMES])
+    create_sql = f"""
+        CREATE TABLE IF NOT EXISTS "{db_config.table}" (
+            text_id TEXT PRIMARY KEY,
+            {columns_sql}
+        )
+    """
+    cursor.execute(create_sql)
+    
+    # Insert results - quote column names for special characters
+    quoted_columns = ", ".join([f'"{col}"' for col in COLUMN_NAMES])
+    placeholders = ", ".join(["?" if db_config.db_type == "sqlite" else "%s"] * (len(COLUMN_NAMES) + 1))
+    insert_sql = f'INSERT INTO "{db_config.table}" (text_id, {quoted_columns}) VALUES ({placeholders})'
+    
+    for text_id, values in results:
+        cursor.execute(insert_sql, [text_id] + values)
+    
+    conn.commit()
+    count = len(results)
+    cursor.close()
+    conn.close()
+    return count
+
+
+def get_csv_columns(csv_path: Path) -> List[str]:
+    """Get column names from a CSV file."""
+    try:
+        with csv_path.open(newline="", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            return next(reader, [])
+    except Exception:
+        return []
 
 
 def iter_text_paths(
@@ -422,7 +616,7 @@ def analyze_doc(doc, morph_dict: Dict[str, List]) -> List[float]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run TAMMI on text files and export a CSV of morphological counts.",
+        description="Run TAMMI on text files, CSV, or database and export morphological counts.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
@@ -479,12 +673,110 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Enable GPU acceleration (requires CUDA or MPS). Automatically sets n_process=1.",
     )
+    
+    # Input source options
+    parser.add_argument(
+        "--input-csv",
+        metavar="CSV_PATH",
+        help="Use a CSV file as input source instead of text files.",
+    )
+    parser.add_argument(
+        "--text-column",
+        default="text_content",
+        help="Column name containing text (for CSV input).",
+    )
+    parser.add_argument(
+        "--id-column",
+        default="text_id",
+        help="Column name containing text IDs (for CSV input).",
+    )
+    parser.add_argument(
+        "--input-db",
+        metavar="CONNECTION",
+        help="Database connection string for input. Format: sqlite:path.db or mysql://user:pass@host/db or postgresql://user:pass@host/db",
+    )
+    parser.add_argument(
+        "--input-table",
+        default="tammi_texts",
+        help="Table name for database input.",
+    )
+    
+    # Output destination options
+    parser.add_argument(
+        "--output-db",
+        metavar="CONNECTION",
+        help="Database connection string for output. Format: sqlite:path.db or mysql://user:pass@host/db or postgresql://user:pass@host/db",
+    )
+    parser.add_argument(
+        "--output-table",
+        default="tammi_results",
+        help="Table name for database output.",
+    )
+    
     parser.add_argument(
         "--menu",
         action="store_true",
         help="Launch an interactive menu to enter options instead of passing arguments.",
     )
-    return parser.parse_args()
+    
+    args = parser.parse_args()
+    
+    # Determine input source type from arguments
+    if args.input_csv:
+        args.input_source_type = "csv"
+        args.input_csv_path = args.input_csv
+        args.input_text_column = args.text_column
+        args.input_id_column = args.id_column
+        args.input_db_config = None
+    elif args.input_db:
+        args.input_source_type, args.input_db_config = _parse_db_connection(args.input_db, args.input_table, args.text_column, args.id_column)
+        args.input_csv_path = ""
+        args.input_text_column = args.text_column
+        args.input_id_column = args.id_column
+    else:
+        args.input_source_type = "files"
+        args.input_csv_path = ""
+        args.input_text_column = ""
+        args.input_id_column = ""
+        args.input_db_config = None
+    
+    # Determine output destination type
+    if args.output_db:
+        args.output_dest_type, args.output_db_config = _parse_db_connection(args.output_db, args.output_table, "", "")
+    else:
+        args.output_dest_type = "csv"
+        args.output_db_config = None
+    
+    return args
+
+
+def _parse_db_connection(conn_str: str, table: str, text_col: str, id_col: str) -> Tuple[str, DatabaseConfig]:
+    """Parse a database connection string into a DatabaseConfig."""
+    if conn_str.startswith("sqlite:"):
+        db_path = conn_str[7:]  # Remove 'sqlite:'
+        return "sqlite", DatabaseConfig(
+            db_type="sqlite",
+            database=db_path,
+            table=table,
+            text_column=text_col or "text_content",
+            id_column=id_col or "text_id",
+        )
+    elif conn_str.startswith("mysql://") or conn_str.startswith("postgresql://"):
+        parsed = urlparse(conn_str)
+        db_type = "mysql" if conn_str.startswith("mysql://") else "postgresql"
+        return db_type, DatabaseConfig(
+            db_type=db_type,
+            host=parsed.hostname or "localhost",
+            port=parsed.port or (3306 if db_type == "mysql" else 5432),
+            database=parsed.path.lstrip("/") if parsed.path else "",
+            username=parsed.username or "",
+            password=parsed.password or "",
+            table=table,
+            text_column=text_col or "text_content",
+            id_column=id_col or "text_id",
+        )
+    else:
+        raise SystemExit(f"Invalid database connection string: {conn_str}. Use sqlite:path.db, mysql://..., or postgresql://...")
 
 
 def _prompt_with_default(prompt: str, default: str) -> str:
@@ -702,6 +994,7 @@ def interactive_menu(
 ) -> argparse.Namespace:
     """
     Enhanced interactive menu with numbered choices for easier use.
+    Supports files, CSV, and database input/output.
     """
     print("\n" + "=" * 60)
     print("  🔬 TAMMI - Tool for Automatic Measurement of Morphological Info")
@@ -709,43 +1002,192 @@ def interactive_menu(
     print("  Use number keys to select options. Press Enter for defaults.\n")
 
     # -------------------------------------------------------------------------
-    # 1. INPUT SELECTION
+    # 1. INPUT SOURCE TYPE SELECTION
     # -------------------------------------------------------------------------
-    _print_menu_header("📁 Step 1: Select Input Files/Folders")
+    _print_menu_header("📁 Step 1: Select Input Source")
     
-    # Discover available folders with text files
-    available_folders = _discover_input_folders()
+    # Build input source options based on available drivers
+    input_source_options = [
+        "Text files (.txt) from folder",
+        "CSV file (with text column)",
+    ]
+    input_source_types = ["files", "csv"]
     
-    if available_folders:
-        folder_options = [f"{f.name}/ ({len(list(f.glob('*.txt')))} .txt files)" for f in available_folders]
-        folder_options.append("Enter custom path(s)")
+    if DB_DRIVERS.get("sqlite"):
+        input_source_options.append("SQLite database")
+        input_source_types.append("sqlite")
+    if DB_DRIVERS.get("mysql"):
+        input_source_options.append("MySQL database")
+        input_source_types.append("mysql")
+    if DB_DRIVERS.get("postgresql"):
+        input_source_options.append("PostgreSQL database")
+        input_source_types.append("postgresql")
+    
+    idx, _ = _prompt_choice("Select input source type:", input_source_options, default_index=0)
+    input_source_type = input_source_types[idx]
+    
+    # Variables to hold input config
+    inputs = []
+    input_csv_path = ""
+    input_text_column = "text"
+    input_id_column = "id"
+    input_db_config: Optional[DatabaseConfig] = None
+    ext = ".txt"
+    recursive = False
+    
+    if input_source_type == "files":
+        # Discover available folders with text files
+        available_folders = _discover_input_folders()
         
-        print("\n  Found folders with text files:")
-        idx, _ = _prompt_choice(
-            "Select input folder:",
-            folder_options,
-            default_index=0,
-        )
-        
-        if idx == len(available_folders):
-            # Custom path
-            raw_inputs = input("\n  Enter file/folder paths (comma-separated): ").strip()
-            inputs = [p.strip() for p in raw_inputs.split(",") if p.strip()]
+        if available_folders:
+            folder_options = [f"{f.name}/ ({len(list(f.glob('*.txt')))} .txt files)" for f in available_folders]
+            folder_options.append("Enter custom path")
+            
+            print("\n  Found folders with text files:")
+            idx, _ = _prompt_choice(
+                "Select input folder:",
+                folder_options,
+                default_index=0,
+            )
+            
+            if idx == len(available_folders):
+                raw_inputs = input("\n  Enter file/folder path: ").strip()
+                inputs = [raw_inputs] if raw_inputs else []
+            else:
+                inputs = [str(available_folders[idx])]
         else:
-            inputs = [str(available_folders[idx])]
+            raw_inputs = input("  Enter text files or directory path: ").strip()
+            inputs = [raw_inputs] if raw_inputs else []
+        
+        if not inputs:
+            print("  ⚠️  No input path provided, using current directory.")
+            inputs = ["."]
+        
+        # File extensions
+        ext_options = [".txt", ".txt,.md", ".txt,.text", ".txt,.md,.rst"]
+        idx, ext = _prompt_choice(
+            "File extensions to process:",
+            ext_options,
+            default_index=0,
+            allow_custom=True,
+            custom_label="Enter custom extensions (comma-separated)",
+        )
+        if idx >= 0:
+            ext = ext_options[idx]
+        
+        # Recursive search
+        recursive = _prompt_yes_no("Search subdirectories recursively?", default=False)
+    
+    elif input_source_type == "csv":
+        # CSV input
+        available_csvs = _discover_csv_files()
+        if available_csvs:
+            csv_options = [str(f) for f in available_csvs]
+            csv_options.append("Enter custom CSV path")
+            
+            idx, _ = _prompt_choice("Select input CSV file:", csv_options, default_index=0)
+            if idx == len(available_csvs):
+                input_csv_path = input("\n  Enter CSV file path: ").strip()
+            else:
+                input_csv_path = csv_options[idx]
+        else:
+            input_csv_path = input("  Enter CSV file path: ").strip()
+        
+        # Get columns from CSV
+        if input_csv_path and Path(input_csv_path).exists():
+            columns = get_csv_columns(Path(input_csv_path))
+            if columns:
+                print(f"\n  Found columns: {', '.join(columns)}")
+                
+                # Text column selection
+                idx, input_text_column = _prompt_choice(
+                    "Select column containing text:",
+                    columns,
+                    default_index=0,
+                    allow_custom=True,
+                    custom_label="Enter column name",
+                )
+                if idx >= 0:
+                    input_text_column = columns[idx]
+                
+                # ID column selection
+                idx, input_id_column = _prompt_choice(
+                    "Select column containing text ID:",
+                    columns,
+                    default_index=0,
+                    allow_custom=True,
+                    custom_label="Enter column name",
+                )
+                if idx >= 0:
+                    input_id_column = columns[idx]
+            else:
+                input_text_column = input("  Enter text column name [text]: ").strip() or "text"
+                input_id_column = input("  Enter ID column name [id]: ").strip() or "id"
+        
+        inputs = [input_csv_path]
+    
     else:
-        # No folders found, ask for manual input
-        while True:
-            raw_inputs = input("  Enter text files or directories (comma-separated): ").strip()
-            inputs = [p.strip() for p in raw_inputs.split(",") if p.strip()]
-            if inputs:
-                break
-            print("  ⚠️  At least one input path is required.")
+        # Database input
+        input_db_config = _configure_database(input_source_type, "input")
+        inputs = [f"db:{input_source_type}:{input_db_config.database}"]
 
     # -------------------------------------------------------------------------
-    # 2. SPACY MODEL SELECTION
+    # 2. OUTPUT DESTINATION SELECTION
     # -------------------------------------------------------------------------
-    _print_menu_header("🧠 Step 2: Select spaCy Model")
+    _print_menu_header("💾 Step 2: Select Output Destination")
+    
+    output_dest_options = ["CSV file"]
+    output_dest_types = ["csv"]
+    
+    if DB_DRIVERS.get("sqlite"):
+        output_dest_options.append("SQLite database")
+        output_dest_types.append("sqlite")
+    if DB_DRIVERS.get("mysql"):
+        output_dest_options.append("MySQL database")
+        output_dest_types.append("mysql")
+    if DB_DRIVERS.get("postgresql"):
+        output_dest_options.append("PostgreSQL database")
+        output_dest_types.append("postgresql")
+    
+    idx, _ = _prompt_choice("Select output destination:", output_dest_options, default_index=0)
+    output_dest_type = output_dest_types[idx]
+    
+    output = "morphemes.csv"
+    output_db_config: Optional[DatabaseConfig] = None
+    
+    if output_dest_type == "csv":
+        # CSV output
+        output_suggestions = ["morphemes.csv", "tammi_results.csv", "output/results.csv"]
+        
+        # Add input-based suggestion
+        if inputs and not inputs[0].startswith("db:"):
+            input_name = Path(inputs[0]).stem
+            output_suggestions.insert(0, f"{input_name}_morphemes.csv")
+        
+        # Also show existing CSV files as options
+        existing_csvs = _discover_csv_files()
+        for csv_file in existing_csvs[:3]:
+            if str(csv_file) not in output_suggestions:
+                output_suggestions.append(str(csv_file))
+        
+        idx, output = _prompt_choice(
+            "Select output filename:",
+            output_suggestions,
+            default_index=0,
+            allow_custom=True,
+            custom_label="Enter custom filename/path",
+        )
+        if idx >= 0:
+            output = output_suggestions[idx]
+    else:
+        # Database output
+        output_db_config = _configure_database(output_dest_type, "output")
+        output = f"db:{output_dest_type}:{output_db_config.database}:{output_db_config.table}"
+
+    # -------------------------------------------------------------------------
+    # 3. SPACY MODEL SELECTION
+    # -------------------------------------------------------------------------
+    _print_menu_header("🧠 Step 3: Select spaCy Model")
     
     available_models = _discover_spacy_models()
     model_descriptions = {
@@ -775,13 +1217,15 @@ def interactive_menu(
     model = available_models[idx] if idx >= 0 else selected_value
 
     # -------------------------------------------------------------------------
-    # 3. MORPHOLEX FILE SELECTION
+    # 4. MORPHOLEX FILE SELECTION
     # -------------------------------------------------------------------------
-    _print_menu_header("📖 Step 3: Select MorphoLex Dictionary")
+    _print_menu_header("📖 Step 4: Select MorphoLex Dictionary")
     
     morpholex_files = _discover_morpholex_files()
     if morpholex_files:
         morph_options = [str(f) for f in morpholex_files]
+        morph_options.append("Enter custom path")
+        
         try:
             default_morph_idx = morph_options.index(base_args.morpholex)
         except ValueError:
@@ -791,60 +1235,16 @@ def interactive_menu(
             "Select MorphoLex CSV file:",
             morph_options,
             default_index=default_morph_idx,
-            allow_custom=True,
-            custom_label="Enter custom path",
         )
-        if idx >= 0:
+        if idx == len(morpholex_files):
+            morpholex = input("\n  Enter MorphoLex CSV path: ").strip() or base_args.morpholex
+        else:
             morpholex = morph_options[idx]
     else:
-        morpholex = _prompt_with_default("  MorphoLex CSV path", base_args.morpholex)
+        morpholex = input(f"  MorphoLex CSV path [{base_args.morpholex}]: ").strip() or base_args.morpholex
 
     # -------------------------------------------------------------------------
-    # 4. OUTPUT FILE
-    # -------------------------------------------------------------------------
-    _print_menu_header("💾 Step 4: Output Settings")
-    
-    output_suggestions = [
-        "morphemes.csv",
-        "tammi_results.csv", 
-        "output/results.csv",
-    ]
-    # Add input-based suggestion
-    if inputs:
-        input_name = Path(inputs[0]).stem
-        output_suggestions.insert(0, f"{input_name}_morphemes.csv")
-    
-    idx, output = _prompt_choice(
-        "Select output filename:",
-        output_suggestions,
-        default_index=0,
-        allow_custom=True,
-        custom_label="Enter custom filename",
-    )
-    if idx >= 0:
-        output = output_suggestions[idx]
-
-    # -------------------------------------------------------------------------
-    # 5. FILE EXTENSIONS
-    # -------------------------------------------------------------------------
-    ext_options = [".txt", ".txt,.md", ".txt,.text", ".txt,.md,.rst"]
-    idx, ext = _prompt_choice(
-        "File extensions to process:",
-        ext_options,
-        default_index=0,
-        allow_custom=True,
-        custom_label="Enter custom extensions (comma-separated)",
-    )
-    if idx >= 0:
-        ext = ext_options[idx]
-
-    # -------------------------------------------------------------------------
-    # 6. RECURSIVE SEARCH
-    # -------------------------------------------------------------------------
-    recursive = _prompt_yes_no("Search subdirectories recursively?", default=False)
-
-    # -------------------------------------------------------------------------
-    # 7. TEXT CASE
+    # 5. PROCESSING OPTIONS
     # -------------------------------------------------------------------------
     _print_menu_header("⚙️  Step 5: Processing Options")
     
@@ -853,7 +1253,7 @@ def interactive_menu(
     keep_case = (idx == 1)
 
     # -------------------------------------------------------------------------
-    # 8. GPU vs CPU
+    # 6. PERFORMANCE SETTINGS
     # -------------------------------------------------------------------------
     _print_menu_header("🚀 Step 6: Performance Settings")
     
@@ -873,9 +1273,7 @@ def interactive_menu(
         print("  Using CPU multi-processing.")
         use_gpu = False
 
-    # -------------------------------------------------------------------------
-    # 9. BATCH SIZE
-    # -------------------------------------------------------------------------
+    # Batch size
     batch_suggestions = [500, 1000, 1500, 2000, 5000]
     if suggested_batch not in batch_suggestions:
         batch_suggestions.insert(0, suggested_batch)
@@ -887,9 +1285,7 @@ def interactive_menu(
         default=suggested_batch,
     )
 
-    # -------------------------------------------------------------------------
-    # 10. N_PROCESS (only if not GPU)
-    # -------------------------------------------------------------------------
+    # N_PROCESS (only if not GPU)
     if use_gpu:
         print("\n  ℹ️  GPU mode: using single process")
         n_process = 1
@@ -907,11 +1303,22 @@ def interactive_menu(
     # SUMMARY
     # -------------------------------------------------------------------------
     _print_menu_header("📋 Configuration Summary")
+    
+    input_summary = ', '.join(inputs) if inputs else "None"
+    if input_source_type == "csv":
+        input_summary = f"CSV: {input_csv_path} (text: {input_text_column}, id: {input_id_column})"
+    elif input_db_config:
+        input_summary = f"DB: {input_source_type} - {input_db_config.database}.{input_db_config.table}"
+    
+    output_summary = output
+    if output_db_config:
+        output_summary = f"DB: {output_dest_type} - {output_db_config.database}.{output_db_config.table}"
+    
     print(f"""
-  Input:        {', '.join(inputs)}
+  Input:        {input_summary}
+  Output:       {output_summary}
   Model:        {model}
   MorphoLex:    {morpholex}
-  Output:       {output}
   Extensions:   {ext}
   Recursive:    {'Yes' if recursive else 'No'}
   Keep case:    {'Yes' if keep_case else 'No'}
@@ -926,9 +1333,16 @@ def interactive_menu(
 
     return argparse.Namespace(
         inputs=inputs,
+        input_source_type=input_source_type,
+        input_csv_path=input_csv_path,
+        input_text_column=input_text_column,
+        input_id_column=input_id_column,
+        input_db_config=input_db_config,
+        output=output,
+        output_dest_type=output_dest_type,
+        output_db_config=output_db_config,
         model=model,
         morpholex=morpholex,
-        output=output,
         ext=ext,
         recursive=recursive,
         keep_case=keep_case,
@@ -937,6 +1351,48 @@ def interactive_menu(
         n_process=n_process,
         menu=False,
     )
+
+
+def _configure_database(db_type: str, purpose: str) -> DatabaseConfig:
+    """Interactive configuration for database connection."""
+    print(f"\n  Configure {db_type.upper()} database for {purpose}:")
+    
+    if db_type == "sqlite":
+        db_path = input("  Database file path [tammi.db]: ").strip() or "tammi.db"
+        table = input("  Table name [tammi_texts]: ").strip() or "tammi_texts"
+        text_col = input("  Text column name [text_content]: ").strip() or "text_content"
+        id_col = input("  ID column name [text_id]: ").strip() or "text_id"
+        
+        return DatabaseConfig(
+            db_type="sqlite",
+            database=db_path,
+            table=table,
+            text_column=text_col,
+            id_column=id_col,
+        )
+    else:
+        # MySQL or PostgreSQL
+        host = input("  Host [localhost]: ").strip() or "localhost"
+        port_str = input(f"  Port [{'3306' if db_type == 'mysql' else '5432'}]: ").strip()
+        port = int(port_str) if port_str else (3306 if db_type == "mysql" else 5432)
+        database = input("  Database name: ").strip()
+        username = input("  Username: ").strip()
+        password = input("  Password: ").strip()
+        table = input("  Table name [tammi_texts]: ").strip() or "tammi_texts"
+        text_col = input("  Text column name [text_content]: ").strip() or "text_content"
+        id_col = input("  ID column name [text_id]: ").strip() or "text_id"
+        
+        return DatabaseConfig(
+            db_type=db_type,
+            host=host,
+            port=port,
+            database=database,
+            username=username,
+            password=password,
+            table=table,
+            text_column=text_col,
+            id_column=id_col,
+        )
 
 
 def run_tammi(args: argparse.Namespace) -> None:
@@ -968,16 +1424,70 @@ def run_tammi(args: argparse.Namespace) -> None:
             f"Install it with: python -m spacy download {args.model}"
         ) from exc
 
-    paths = list(iter_text_paths(args.inputs, extensions, args.recursive))
-    if not paths:
-        raise SystemExit("No input files found.")
+    # Determine input source type
+    input_source_type = getattr(args, "input_source_type", "files")
+    lowercase = not args.keep_case
+    
+    # Set up the text stream based on input source type
+    if input_source_type == "csv":
+        # CSV file input
+        csv_path = Path(getattr(args, "input_csv_path", args.inputs[0] if args.inputs else ""))
+        if not csv_path.exists():
+            raise SystemExit(f"Input CSV file not found: {csv_path}")
+        
+        text_column = getattr(args, "input_text_column", "text")
+        id_column = getattr(args, "input_id_column", "id")
+        
+        # Count rows for progress bar
+        with csv_path.open(newline="", encoding="utf-8") as f:
+            total_rows = sum(1 for _ in f) - 1  # subtract header
+        
+        doc_stream = stream_texts_from_csv(csv_path, text_column, id_column, lowercase)
+        progress: Optional[ProgressBar] = ProgressBar(total_rows)
+        print(f"Processing {total_rows} rows from CSV: {csv_path}")
+        
+    elif input_source_type in ("sqlite", "mysql", "postgresql"):
+        # Database input
+        input_db_config: Optional[DatabaseConfig] = getattr(args, "input_db_config", None)
+        if not input_db_config:
+            raise SystemExit("Database configuration required for database input")
+        
+        # Try to count rows for progress bar
+        try:
+            conn = input_db_config.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(f"SELECT COUNT(*) FROM {input_db_config.table}")
+            total_rows = cursor.fetchone()[0]
+            cursor.close()
+            conn.close()
+        except Exception as e:
+            print(f"Warning: Could not count rows: {e}")
+            total_rows = 0
+        
+        doc_stream = stream_texts_from_database(input_db_config, lowercase)
+        progress = ProgressBar(total_rows)
+        print(f"Processing {total_rows} rows from {input_source_type} database: {input_db_config.database}.{input_db_config.table}")
+        
+    else:
+        # Default: file-based input
+        paths = list(iter_text_paths(args.inputs, extensions, args.recursive))
+        if not paths:
+            raise SystemExit("No input files found.")
+        
+        doc_stream = stream_texts(paths, lowercase=lowercase)
+        progress = ProgressBar(len(paths))
+        print(f"Processing {len(paths)} files")
 
-    progress: Optional[ProgressBar] = ProgressBar(len(paths))
-    with Path(args.output).open("w", newline="", encoding="utf-8") as out_f:
-        writer = csv.writer(out_f)
-        writer.writerow(["text_id", *COLUMN_NAMES])
-
-        doc_stream = stream_texts(paths, lowercase=not args.keep_case)
+    # Determine output destination type
+    output_dest_type = getattr(args, "output_dest_type", "csv")
+    output_db_config: Optional[DatabaseConfig] = getattr(args, "output_db_config", None)
+    
+    if output_dest_type in ("sqlite", "mysql", "postgresql") and output_db_config:
+        # Database output - collect results in batches and write to database
+        results_batch: List[Tuple[str, List[float]]] = []
+        batch_write_size = 100  # Write to DB every 100 results
+        total_written = 0
+        
         for idx, (doc, meta) in enumerate(
             nlp.pipe(
                 doc_stream,
@@ -987,12 +1497,49 @@ def run_tammi(args: argparse.Namespace) -> None:
             ),
             start=1,
         ):
-            result_row = [meta["text_id"], *analyze_doc(doc, morph_dict)]
-            writer.writerow(result_row)
+            result_values = analyze_doc(doc, morph_dict)
+            results_batch.append((meta["text_id"], result_values))
+            
+            # Write batch to database
+            if len(results_batch) >= batch_write_size:
+                write_results_to_database(output_db_config, results_batch)
+                total_written += len(results_batch)
+                results_batch = []
+            
             if progress:
                 progress.update(idx)
-    if progress:
-        progress.close()
+        
+        # Write remaining results
+        if results_batch:
+            write_results_to_database(output_db_config, results_batch)
+            total_written += len(results_batch)
+        
+        if progress:
+            progress.close()
+        print(f"Wrote {total_written} results to {output_dest_type} database: {output_db_config.table}")
+        
+    else:
+        # CSV output (default)
+        with Path(args.output).open("w", newline="", encoding="utf-8") as out_f:
+            writer = csv.writer(out_f)
+            writer.writerow(["text_id", *COLUMN_NAMES])
+
+            for idx, (doc, meta) in enumerate(
+                nlp.pipe(
+                    doc_stream,
+                    as_tuples=True,
+                    batch_size=args.batch_size,
+                    n_process=args.n_process,
+                ),
+                start=1,
+            ):
+                result_row = [meta["text_id"], *analyze_doc(doc, morph_dict)]
+                writer.writerow(result_row)
+                if progress:
+                    progress.update(idx)
+        if progress:
+            progress.close()
+        print(f"Results written to: {args.output}")
 
 
 def main() -> None:
@@ -1014,7 +1561,14 @@ def main() -> None:
     if args.n_process == DEFAULT_N_PROCESS:
         args.n_process = suggested_n_process
 
-    if args.menu or not args.inputs:
+    # Check if we have any valid input source (files, CSV, or database)
+    has_input = (
+        args.inputs or 
+        getattr(args, 'input_csv_path', '') or 
+        getattr(args, 'input_db_config', None)
+    )
+    
+    if args.menu or not has_input:
         args = interactive_menu(args, suggested_n_process, suggested_batch)
     run_tammi(args)
 
