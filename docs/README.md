@@ -19,7 +19,7 @@ Welcome to the TAMMI (Tool for Automatic Measurement of Morphological Informatio
 
 ## Package Structure
 
-```
+```text
 tammi/
 ├── __init__.py          # Package root with lazy imports
 ├── analysis/            # Morphological analysis module
