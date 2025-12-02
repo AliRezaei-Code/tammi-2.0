@@ -150,8 +150,8 @@ def _discover_spacy_models() -> List[str]:
             if pipelines:
                 return list(pipelines.keys())
     except Exception:
+        # If spaCy info cannot be retrieved, fall back to default models.
         pass
-            # If spaCy info cannot be retrieved, fall back to default models.
     return ["en_core_web_sm", "en_core_web_md", "en_core_web_lg", "en_core_web_trf"]
 
 
