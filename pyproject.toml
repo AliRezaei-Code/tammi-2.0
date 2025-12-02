@@ -1,0 +1,84 @@
+# pyproject.toml - TAMMI Package Configuration
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tammi-morphology"
+version = "2.0.0"
+description = "Tool for Automatic Measurement of Morphological Information - CLI and Python package for morphological complexity analysis"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "TAMMI Original Contributors"}
+]
+maintainers = [
+    {name = "Ali Rezaei", email = "ali0rezaei0@gmail.com"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Text Processing :: Linguistic",
+]
+keywords = ["morphology", "linguistics", "nlp", "text-analysis", "spacy"]
+requires-python = ">=3.9"
+dependencies = [
+    "spacy>=3.0.0",
+]
+
+[project.optional-dependencies]
+mysql = ["mysql-connector-python>=8.0.0"]
+postgresql = ["psycopg2-binary>=2.9.0"]
+mongodb = ["pymongo>=4.0.0"]
+gpu = ["torch>=2.0.0"]
+all = [
+    "mysql-connector-python>=8.0.0",
+    "psycopg2-binary>=2.9.0",
+    "pymongo>=4.0.0",
+    "torch>=2.0.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+
+[project.scripts]
+tammi = "tammi.cli.main:main"
+
+[project.urls]
+Homepage = "https://github.com/tammi-project/tammi"
+Documentation = "https://github.com/tammi-project/tammi#readme"
+Repository = "https://github.com/tammi-project/tammi.git"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tammi*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tammi/tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+
+[tool.black]
+line-length = 100
+target-version = ["py39", "py310", "py311", "py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
