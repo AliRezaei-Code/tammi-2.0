@@ -951,6 +951,7 @@ def _discover_spacy_models() -> List[str]:
     except Exception:
         pass
     # Fallback to common models
+    # These are common English models; adjust as needed for other languages
     return ["en_core_web_sm", "en_core_web_md", "en_core_web_lg", "en_core_web_trf"]
 
 
