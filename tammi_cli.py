@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import sys
+import time
 from collections import Counter
-from pathlib import Path
 from itertools import chain
+from pathlib import Path
 from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
 
 import spacy
@@ -67,6 +69,57 @@ COLUMN_NAMES: List[str] = [
 
 # Indices in the MorphoLex CSV that list derivational affixes for a word.
 DERIVATIONAL_AFFIX_INDICES: Tuple[int, ...] = (68, 69, 70, 71, 72, 73, 74)
+DEFAULT_BATCH_SIZE = 1000
+DEFAULT_N_PROCESS = 1
+
+
+def check_gpu_available() -> Tuple[bool, str]:
+    """
+    Check if GPU acceleration is available for spaCy.
+    Returns (is_available, message).
+    """
+    try:
+        import torch
+        if torch.cuda.is_available():
+            device_name = torch.cuda.get_device_name(0)
+            return True, f"CUDA GPU available: {device_name}"
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return True, "Apple MPS (Metal) GPU available"
+        else:
+            return False, "No GPU detected (torch installed but no CUDA/MPS)"
+    except ImportError:
+        pass
+
+    try:
+        import cupy
+        return True, "CUDA GPU available via CuPy"
+    except ImportError:
+        pass
+
+    return False, "No GPU support detected (install torch with CUDA or cupy)"
+
+
+def setup_gpu(prefer_gpu: bool) -> Tuple[bool, str]:
+    """
+    Attempt to enable GPU for spaCy if requested.
+    Returns (gpu_enabled, message).
+    """
+    if not prefer_gpu:
+        return False, "GPU not requested"
+
+    gpu_available, availability_msg = check_gpu_available()
+    if not gpu_available:
+        return False, f"GPU requested but not available: {availability_msg}"
+
+    try:
+        # Try to enable GPU in spaCy
+        gpu_activated = spacy.prefer_gpu()
+        if gpu_activated:
+            return True, f"GPU enabled for spaCy. {availability_msg}"
+        else:
+            return False, "spacy.prefer_gpu() returned False - falling back to CPU"
+    except Exception as e:
+        return False, f"Failed to enable GPU: {e}"
 
 
 class ProgressBar:
@@ -374,7 +427,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "inputs",
-        nargs="+",
+        nargs="*",
         help="Text files or directories containing text files.",
     )
     parser.add_argument(
@@ -407,13 +460,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=1000,
+        default=DEFAULT_BATCH_SIZE,
         help="spaCy pipe batch size.",
     )
     parser.add_argument(
         "--n-process",
         type=int,
-        default=1,
+        default=DEFAULT_N_PROCESS,
         help="Number of processes for spaCy pipe.",
     )
     parser.add_argument(
@@ -421,17 +474,165 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Do not lowercase input text (TAMMI originally lowercases).",
     )
+    parser.add_argument(
+        "--use-gpu",
+        action="store_true",
+        help="Enable GPU acceleration (requires CUDA or MPS). Automatically sets n_process=1.",
+    )
+    parser.add_argument(
+        "--menu",
+        action="store_true",
+        help="Launch an interactive menu to enter options instead of passing arguments.",
+    )
     return parser.parse_args()
 
 
-def main() -> None:
-    args = parse_args()
+def _prompt_with_default(prompt: str, default: str) -> str:
+    value = input(f"{prompt} [{default}]: ").strip()
+    return value or default
+
+
+def _prompt_bool(prompt: str, default: bool) -> bool:
+    default_label = "y" if default else "n"
+    while True:
+        raw = input(f"{prompt} (y/n) [{default_label}]: ").strip().lower()
+        if not raw:
+            return default
+        if raw in {"y", "yes"}:
+            return True
+        if raw in {"n", "no"}:
+            return False
+        print("Please answer with 'y' or 'n'.")
+
+
+def _prompt_int(prompt: str, default: int) -> int:
+    while True:
+        raw = input(f"{prompt} [{default}]: ").strip()
+        if not raw:
+            return default
+        try:
+            return int(raw)
+        except ValueError:
+            print("Please enter a whole number.")
+
+
+def quick_cpu_probe(sample_size: int = 2000) -> Tuple[int, int, float]:
+    """
+    Run a very small benchmark to suggest n_process and batch_size.
+    """
+
+    cores = os.cpu_count() or 1
+    suggested_n_process = max(1, cores - 1)
+
+    try:
+        nlp = spacy.blank("en")
+        sample_text = "This is a quick TAMMI benchmark sentence."
+        sample = [sample_text] * sample_size
+        start = time.perf_counter()
+        token_count = 0
+        for doc in nlp.pipe(sample, batch_size=100, n_process=1):
+            token_count += len(doc)
+        duration = max(time.perf_counter() - start, 1e-9)
+        tokens_per_sec = token_count / duration
+    except Exception:
+        tokens_per_sec = 0.0
+
+    if tokens_per_sec >= 40000:
+        suggested_batch = 2000
+    elif tokens_per_sec >= 20000:
+        suggested_batch = 1500
+    elif tokens_per_sec >= 10000:
+        suggested_batch = 1000
+    else:
+        suggested_batch = 500
+
+    return suggested_n_process, suggested_batch, tokens_per_sec
+
+
+def interactive_menu(
+    base_args: argparse.Namespace,
+    suggested_n_process: int,
+    suggested_batch: int,
+) -> argparse.Namespace:
+    """
+    Collect CLI options via prompts so the tool can run with no positional args.
+    """
+
+    print("TAMMI interactive menu (press Enter to accept defaults)")
+    while True:
+        raw_inputs = input(
+            "Enter text files or directories (comma-separated)"
+            f"{' [' + ', '.join(base_args.inputs) + ']' if base_args.inputs else ''}: "
+        ).strip()
+        inputs = (
+            [item.strip() for item in raw_inputs.split(",") if item.strip()]
+            if raw_inputs
+            else list(base_args.inputs)
+        )
+        if inputs:
+            break
+        print("At least one input path is required.")
+
+    model = _prompt_with_default("spaCy model", base_args.model)
+    morpholex = _prompt_with_default("MorphoLex CSV path", base_args.morpholex)
+    output = _prompt_with_default("Output CSV path", base_args.output)
+    ext = _prompt_with_default("File extensions (comma-separated)", base_args.ext)
+    recursive = _prompt_bool("Recurse into subdirectories", base_args.recursive)
+    keep_case = _prompt_bool("Keep case (do not lowercase text)", base_args.keep_case)
+    
+    # GPU option
+    gpu_available, gpu_msg = check_gpu_available()
+    if gpu_available:
+        print(f"  ({gpu_msg})")
+        use_gpu = _prompt_bool("Use GPU acceleration", base_args.use_gpu)
+    else:
+        print(f"  (GPU not available: {gpu_msg})")
+        use_gpu = False
+    
+    batch_size = _prompt_int("spaCy batch size", base_args.batch_size)
+    
+    # If GPU is enabled, n_process must be 1
+    if use_gpu:
+        print("  (GPU mode: n_process forced to 1)")
+        n_process = 1
+    else:
+        n_process = _prompt_int("spaCy n_process", base_args.n_process)
+
+    return argparse.Namespace(
+        inputs=inputs,
+        model=model,
+        morpholex=morpholex,
+        output=output,
+        ext=ext,
+        recursive=recursive,
+        keep_case=keep_case,
+        use_gpu=use_gpu,
+        batch_size=batch_size or suggested_batch,
+        n_process=n_process if not use_gpu else 1,
+        menu=False,
+    )
+
+
+def run_tammi(args: argparse.Namespace) -> None:
     extensions = tuple(ext.strip().lower() for ext in args.ext.split(",") if ext.strip())
 
     morph_path = Path(args.morpholex)
     if not morph_path.exists():
         raise SystemExit(f"MorphoLex file not found: {morph_path}")
     morph_dict = load_morph_dict(morph_path)
+
+    # Handle GPU setup
+    use_gpu = getattr(args, "use_gpu", False)
+    if use_gpu:
+        gpu_enabled, gpu_msg = setup_gpu(prefer_gpu=True)
+        print(f"GPU: {gpu_msg}")
+        if gpu_enabled:
+            # GPU mode requires n_process=1
+            if args.n_process != 1:
+                print("  (Overriding n_process to 1 for GPU mode)")
+                args.n_process = 1
+        else:
+            print("  (Falling back to CPU)")
 
     try:
         nlp = spacy.load(args.model)
@@ -466,6 +667,30 @@ def main() -> None:
                 progress.update(idx)
     if progress:
         progress.close()
+
+
+def main() -> None:
+    suggested_n_process, suggested_batch, tokens_per_sec = quick_cpu_probe()
+    if tokens_per_sec:
+        print(
+            f"Quick CPU check: ~{tokens_per_sec:,.0f} tokens/sec with a blank spaCy model."
+        )
+    cores = os.cpu_count() or 1
+    print(
+        "Suggested settings -> "
+        f"batch_size: {suggested_batch}, n_process: {suggested_n_process} "
+        f"(detected cores: {cores})"
+    )
+
+    args = parse_args()
+    if args.batch_size == DEFAULT_BATCH_SIZE:
+        args.batch_size = suggested_batch
+    if args.n_process == DEFAULT_N_PROCESS:
+        args.n_process = suggested_n_process
+
+    if args.menu or not args.inputs:
+        args = interactive_menu(args, suggested_n_process, suggested_batch)
+    run_tammi(args)
 
 
 if __name__ == "__main__":
