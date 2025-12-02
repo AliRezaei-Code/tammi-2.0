@@ -25,14 +25,14 @@ Thank you for your interest in contributing to TAMMI! This document provides gui
 
 1. Fork the repository on GitHub
 2. Clone your fork:
-   
+
    ```bash
    git clone https://github.com/YOUR_USERNAME/tammi.git
    cd tammi
    ```
-   
+
 3. Add upstream remote:
-   
+
    ```bash
    git remote add upstream https://github.com/ORIGINAL_OWNER/tammi.git
    ```
@@ -123,17 +123,17 @@ Use Google-style docstrings:
 def analyze_text(text: str, text_id: str) -> dict[str, Any]:
     """
     Analyze a single text for morphological features.
-    
+
     Args:
         text: The text to analyze.
         text_id: Unique identifier for the text.
-        
+
     Returns:
         Dictionary containing morphological metrics.
-        
+
     Raises:
         ValueError: If text is empty.
-        
+
     Example:
         >>> analyzer = TAMMIAnalyzer("morpholex.csv")
         >>> result = analyzer.analyze_text("Hello world", "doc1")
@@ -175,11 +175,11 @@ class TestCSVReader(unittest.TestCase):
         """Set up test fixtures."""
         self.test_file = "test_data.csv"
         # Create test data...
-    
+
     def tearDown(self):
         """Clean up after tests."""
         # Remove test files...
-    
+
     def test_stream_returns_tuples(self):
         """Test that stream yields (id, text) tuples."""
         reader = CSVReader(self.test_file)
@@ -187,7 +187,7 @@ class TestCSVReader(unittest.TestCase):
             self.assertIsInstance(item, tuple)
             self.assertEqual(len(item), 2)
         reader.close()
-    
+
     def test_count_matches_actual(self):
         """Test that count returns correct number."""
         reader = CSVReader(self.test_file)
@@ -214,7 +214,7 @@ open htmlcov/index.html
 ### Before Submitting
 
 1. **Create a branch:**
-   
+
    ```bash
    git checkout -b feature/your-feature-name
    ```
@@ -222,13 +222,13 @@ open htmlcov/index.html
 2. **Make your changes**
 
 3. **Run tests:**
-   
+
    ```bash
    python -m unittest discover tammi/tests/ -v
    ```
 
 4. **Format code:**
-   
+
    ```bash
    black tammi/
    ruff check --fix tammi/
@@ -237,7 +237,7 @@ open htmlcov/index.html
 5. **Update documentation** if needed
 
 6. **Commit with clear message:**
-   
+
    ```bash
    git add .
    git commit -m "Add feature: description of what you added"
@@ -246,7 +246,7 @@ open htmlcov/index.html
 ### Submitting
 
 1. Push to your fork:
-   
+
    ```bash
    git push origin feature/your-feature-name
    ```
@@ -282,11 +282,11 @@ class NewFormatReader(InputReader):
         self.id_column = id_column
         self.lowercase = lowercase
         self._data = self._load_data()
-    
+
     def _load_data(self):
         # Load your format here
         pass
-    
+
     def stream(self):
         for item in self._data:
             text_id = item[self.id_column]
@@ -294,10 +294,10 @@ class NewFormatReader(InputReader):
             if self.lowercase:
                 text = text.lower()
             yield (text_id, text)
-    
+
     def count(self):
         return len(self._data)
-    
+
     def close(self):
         pass
 
@@ -311,15 +311,15 @@ ReaderFactory.register("newformat", NewFormatReader)
 from tammi.io.newformat_io import NewFormatReader
 ```
 
-2. Add CLI argument in `tammi/cli/main.py`:
+1. Add CLI argument in `tammi/cli/main.py`:
 
 ```python
 parser.add_argument("--input-newformat", metavar="PATH", help="...")
 ```
 
-3. Write tests in `tammi/tests/test_io.py`
+1. Write tests in `tammi/tests/test_io.py`
 
-4. Update documentation
+1. Update documentation
 
 ### Adding New Metrics
 
