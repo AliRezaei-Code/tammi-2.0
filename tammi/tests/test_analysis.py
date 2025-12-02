@@ -64,7 +64,8 @@ class TestMorphoLexDict(unittest.TestCase):
         
         values = morph.get("test")
         self.assertIsNotNone(values)
-        self.assertEqual(len(values), 75)
+        if values is not None:  # Type narrowing for Pylance
+            self.assertEqual(len(values), 75)
     
     def test_len(self) -> None:
         morph = MorphoLexDict(self.test_morpholex)

@@ -52,9 +52,11 @@ class MorphoLexDict:
         """Get morphological data for a word."""
         return self._data.get(word)
     
-    def __contains__(self, word: str) -> bool:
+    def __contains__(self, item: object) -> bool:
         """Check if word is in dictionary."""
-        return word in self._data
+        if not isinstance(item, str):
+            return False
+        return item in self._data
     
     def __len__(self) -> int:
         """Return number of words in dictionary."""
