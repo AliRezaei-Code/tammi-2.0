@@ -45,13 +45,13 @@ def _check_db_drivers() -> Dict[str, bool]:
         drivers["sqlite"] = False
     
     try:
-        import mysql.connector  # noqa: F401
+        import mysql.connector  # type: ignore[import-not-found]  # noqa: F401
         drivers["mysql"] = True
     except ImportError:
         drivers["mysql"] = False
     
     try:
-        import psycopg2  # noqa: F401
+        import psycopg2  # type: ignore[import-not-found]  # noqa: F401
         drivers["postgresql"] = True
     except ImportError:
         drivers["postgresql"] = False
@@ -81,7 +81,7 @@ class DatabaseConfig:
             import sqlite3
             return sqlite3.connect(self.database)
         elif self.db_type == "mysql":
-            import mysql.connector
+            import mysql.connector  # type: ignore[import-not-found]
             return mysql.connector.connect(
                 host=self.host,
                 port=self.port or 3306,
@@ -90,7 +90,7 @@ class DatabaseConfig:
                 password=self.password,
             )
         elif self.db_type == "postgresql":
-            import psycopg2
+            import psycopg2  # type: ignore[import-not-found]
             return psycopg2.connect(
                 host=self.host,
                 port=self.port or 5432,
@@ -171,7 +171,7 @@ def check_gpu_available() -> Tuple[bool, str]:
         pass
 
     try:
-        import cupy
+        import cupy  # type: ignore[import-not-found]
         return True, "CUDA GPU available via CuPy"
     except ImportError:
         pass
@@ -193,7 +193,7 @@ def setup_gpu(prefer_gpu: bool) -> Tuple[bool, str]:
 
     try:
         # Try to enable GPU in spaCy
-        gpu_activated = spacy.prefer_gpu()
+        gpu_activated = spacy.prefer_gpu()  # type: ignore[attr-defined]
         if gpu_activated:
             return True, f"GPU enabled for spaCy. {availability_msg}"
         else:
@@ -1458,7 +1458,8 @@ def run_tammi(args: argparse.Namespace) -> None:
             conn = input_db_config.get_connection()
             cursor = conn.cursor()
             cursor.execute(f"SELECT COUNT(*) FROM {input_db_config.table}")
-            total_rows = cursor.fetchone()[0]
+            row = cursor.fetchone()
+            total_rows = row[0] if row else 0
             cursor.close()
             conn.close()
         except Exception as e:
