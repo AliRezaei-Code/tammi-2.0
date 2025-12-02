@@ -1,16 +1,105 @@
-/responses
-runlog.txt
-*.log
-*.tmp
-.DS_Store
-.vscode/
-.idea/
+# ====================================
+# TAMMI Project .gitignore
+# ====================================
 
-/output
-/archive
+# ----- Python -----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-/__pycache__/
-*.pyc
+# ----- Virtual Environments -----
 .env
 .venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ----- IDE/Editor -----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# ----- OS Generated -----
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+__MACOSX/
+
+# ----- Testing -----
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# ----- Type Checking -----
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ----- Jupyter Notebooks -----
+.ipynb_checkpoints/
+
+# ----- Project Specific: Test/Output Files -----
+# These are generated during testing and should not be committed
+test_*.csv
+test_*.json
+test_*.db
+test_*.jsonl
 morphemes.csv
+final_test.csv
+morphemes_practice_cli.csv
+
+# Large data directories (user-specific)
+/responses/
+/output/
+/archive/
+
+# Log files
+*.log
+runlog.txt
+*.tmp
+
+# ----- Large Data Files -----
+# Uncomment if you want to exclude the MorphoLex dictionary
+# morpho_lex_df_w_log_w_prefsuf_no_head.csv
+
+# ----- Distribution/Packaging -----
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
